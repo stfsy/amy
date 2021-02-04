@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>compiling/compiler2.js - Documentation</title>
+
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav>
+    <li class="nav-link nav-home-link"><a href="index.html">Home</a></li><li class="nav-heading">Classes</li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="Amy.html">Amy</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="Amy.html#.compileTemplates">compileTemplates</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="CharacterValidator.html">CharacterValidator</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="CharacterValidator.html#isValid">isValid</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="CommandParser.html">CommandParser</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="CommandParser.html#isParseable">isParseable</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="CommandParser.html#parseLine">parseLine</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="FileReader.html">FileReader</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="FileReader.html#matchFiles">matchFiles</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="FileReader.html#readNode">readNode</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="FileReader.html#readNodes">readNodes</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="FileWriter.html">FileWriter</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="FileWriter.html#writeNode">writeNode</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="FileWriter.html#writeNodes">writeNodes</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="RuntimeCompiler.html">RuntimeCompiler</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="RuntimeCompiler.html#initialize">initialize</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="StringInterpolator.html">StringInterpolator</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="StringInterpolator.html#interpolate">interpolate</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="StringInterpolator.html#valueFor">valueFor</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="StringTokenizer.html">StringTokenizer</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="StringTokenizer.html#tokenize">tokenize</a></span></li><li class="nav-heading"><span class="nav-item-type type-class">C</span><span class="nav-item-name"><a href="TemplateCompiler.html">TemplateCompiler</a></span></li><li class="nav-item"><span class="nav-item-type type-function">F</span><span class="nav-item-name"><a href="TemplateCompiler.html#compile">compile</a></span></li>
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">compiling/compiler2.js</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>'use strict'
+
+const Node = require('node-html-light').Node
+const Nodes = require('node-html-light').Nodes
+const Reader = require('../reading/reader')
+const Writer = require('../writing/writer')
+const Parser = require('../parsing/parser2')
+const Interpolator = require('./interpolator')
+
+const createError = require('../utilities/error')
+
+/** */
+class TemplateCompiler {
+
+    constructor(inputPath, removeComments) {
+        this._reader = new Reader(inputPath)
+        this._writer = new Writer()
+        this._parser = new Parser()
+        this._interpolator = new Interpolator()
+
+        if (removeComments !== undefined) {
+            this._removeComments = removeComments === true
+        } else {
+            this._removeComments = process.env.NODE_ENV === 'production'
+        }
+
+        // attributes like checked have no values
+        this._attributes_which_values_are_ignored = ['autofocus', 'checked', 'disabled', 'required']
+    }
+
+    /** 
+     * Compiles templates that are in a subfolder of the inputPath und match the glob pattern. Compiled templates are written
+     * to the output directory. Commands are executed using the given context.
+     * 
+     * @param {String} glob the glob pattern
+     * @param {String} inputPath the input path to start checking for files
+     * @param {String} outputPath the output path of the compiled files
+     * @param {Object} context the context that will be used to execute commands and interpolate placeholders
+     * @returns {Promise} a promise that will be resolved once all templates are compiled and written to the output directory
+    */
+    compile(glob, inputPath, outputPath, context) {
+        return this._reader.matchFiles(glob, inputPath).then((inputFiles) => {
+            const promises = inputFiles.map((inputFile) => {
+                return this._reader.readNodes(inputPath, inputFile).then((nodes) => {
+                    return this._compile(nodes, context)
+                }).then((nodes) => {
+                    return this._writer.writeNodes(outputPath, inputFile, nodes)
+                })
+            })
+            return Promise.all(promises)
+        })
+    }
+
+    /** @private */
+    _compile(nodes, context) {
+        const promises = []
+
+        nodes.forEach((node, index) => {
+            const commentNodes = node.find({
+                type: Node.TYPE_COMMENT
+            })
+
+            // iterating backwards because we might insert some elements 
+            // while iterating through the array. iterating backwards will 
+            // help us do that because we will insert at index i+1
+            for (let i = commentNodes.length - 1; i >= 0; i--) {
+                const commentNode = commentNodes[i]
+                if (this._parser.isParseable(commentNode.get().data)) {
+                    promises.push(this._execute(commentNode, context).then((elements) => {
+                        if (elements) { // could be falsy case for marker commands like 'include' 
+                            elements.reverse().forEach((element) => {
+                                // it is important to check the parent of the comment node because
+                                // if we are compiling a template which contains a command at the 
+                                // highest level of the dom, we cannot just append the element node. 
+                                // hell we can but the node won't make it into the serialized output 
+                                // so if we have no parent we gotta insert the new element manually into the nodes array
+                                const parent = commentNode.parent
+                                if (!parent) {
+                                    nodes.splice(index + 1, 0, element)
+                                } else {
+                                    parent.appendChildAfter(element, commentNode)
+                                }
+                            })
+                        }
+
+                        // don't remove include comments here because we have not yet
+                        // executed them
+                        if (this._removeComments &amp;&amp; !commentNode.get().data.includes('include')) {
+                            commentNode.removeChild(commentNode)
+                        }
+                    }))
+                }
+            }
+        })
+
+        return Promise.all(promises).then(_ => nodes)
+    }
+
+    /** @private */
+    _execute(commentNode, context) {
+        const commands = this._parser.parseLine(commentNode.get().data)
+
+        const ifCommand = commands.find((command) => {
+            return command.name() === 'if'
+        })
+        const forEachCommand = commands.find((command) => {
+            return command.name() === 'forEach'
+        })
+        const importCommand = commands.find((command) => {
+            return command.name() === 'import'
+        })
+        const addCommand = commands.find((command) => {
+            return command.name() === 'add'
+        })
+        const includeCommand = commands.find((command) => {
+            return command.name() === 'include'
+        })
+
+        if (ifCommand) {
+            return this._if(importCommand, commands, context)
+        } else if (forEachCommand) {
+            return this._reader.readNodes(importCommand.arguments()).then((nodes) => {
+                return this._forEach(nodes, commentNode, forEachCommand, commands, context)
+            })
+        } else if (addCommand) {
+            return this._add(importCommand, commands, context)
+        } else if (importCommand) {
+            return this._import(importCommand, commands, context)
+        } else if (includeCommand) {
+            return Promise.resolve()
+        } else {
+            throw createError('Cannot handle unknown command in comment', commands, context)
+        }
+    }
+
+    /** @private */
+    _if(_, commands, context) {
+        const indexOfIfCommand = commands.findIndex((command) => {
+            return command.name() === 'if'
+        })
+
+        const ifCommands = commands[indexOfIfCommand]
+        const conditionalCommand = commands.filter((command) => {
+            return command.name() !== 'is'
+        })
+        const parentCommands = commands.filter((command) => {
+            return command.name() !== 'if' &amp;&amp; command.name() !== 'is'
+        })
+
+        const value = this._interpolator.valueFor(ifCommands.arguments(), (context))
+
+        if (conditionalCommand.length > 0 &amp;&amp; conditionalCommand[0].name() === 'is') {
+            if (this._is(conditionalCommand[0], value)) {
+                return this._import(parentCommands[0], commands, context)
+            }
+        } else if (value) {
+            return this._import(parentCommands[0], commands, context)
+        }
+
+        return Promise.resolve()
+    }
+
+    _is(isCommand, value) {
+        switch (isCommand.arguments()) {
+            case 'truthy': {
+                return value
+                break;
+            }
+            case 'falsy': {
+                return !value
+                break;
+            }
+            case 'true': {
+                return value === true
+            }
+            case 'false': {
+                return value === false
+            }
+            default:
+                throw createError('Cannot handle unknown conditional in command', isCommand, value)
+        }
+    }
+
+    /** @private */
+    _forEach(nodes, commentNode, command, commands, globalContext) {
+        const newNodes = []
+        const elements = this._interpolator.valueFor(command.arguments(), (globalContext))
+
+        if (!nodes) {
+            throw createError('Cannot invoke forEach operation on falsy nodes. Did you invoke forEach before import?', command, globalContext)
+        }
+
+        if (!Array.isArray(elements)) {
+            throw createError('Cannot invoke forEach operation with a context that is not of type Array', command, globalContext)
+        }
+
+        const htmlStrings = nodes.map((node) => node.toHtml())
+
+        const promises = elements.map((element) => {
+            const nodes = htmlStrings.map((string) => Node.fromString(string))
+            const context = this._alias(commands, element)
+
+            return this._compile(nodes, context).then((compiled) => {
+                return this._interpolate(compiled, context)
+            })
+        })
+
+        return Promise.all(promises).then(nodes => {
+            return nodes.flat(1)
+        })
+    }
+
+    _add(importCommand, commands, context) {
+        const indexOfInclude = commands.findIndex((command) => {
+            return command.name() === 'add'
+        })
+
+        const includeCommands = commands.slice(indexOfInclude)
+        const parentCommands = commands.slice(0, indexOfInclude)
+
+        return this._import(includeCommands[0], includeCommands, context).then((newChildNodes) => {
+            return this._import(parentCommands[0], parentCommands, context).then((parentNodes) => {
+                return this._include(parentNodes, newChildNodes)
+            })
+        })
+    }
+
+    _include(siblingNodes, newChildNodes) {
+        const topLevelIncludeCommentNodeIndex = siblingNodes.findIndex((node) => {
+            if (node.type === Node.TYPE_COMMENT) {
+                const commands = this._parser.parseLine(node.get().data)
+                if (commands.find((command) => {
+                    return command.name() === 'include'
+                })) {
+                    return true
+                }
+            }
+        })
+
+        if (topLevelIncludeCommentNodeIndex !== -1) {
+            const topLevelIncludeCommentNode = siblingNodes[topLevelIncludeCommentNodeIndex]
+            // newChildNodes.reduce((current, next) => {
+            //     current.appendChildAfter(next, current)
+            //     return current
+            // }, topLevelIncludeCommentNode)
+
+            newChildNodes.forEach((node, index) => {
+                siblingNodes.splice(topLevelIncludeCommentNodeIndex + topLevelIncludeCommentNodeIndex, 0, node)
+            })
+
+            if (this._removeComments) {
+                topLevelIncludeCommentNode.removeChild(topLevelIncludeCommentNode)
+                siblingNodes.splice(topLevelIncludeCommentNodeIndex, 1)
+            }
+
+            return siblingNodes
+        }
+
+        // if theres no include comment at root level of the fragment
+        // we need to traves all node
+        siblingNodes.some((parentNode) => {
+            const commentNodes = parentNode.find({
+                type: Node.TYPE_COMMENT
+            })
+
+            return commentNodes.some((commentNode) => {
+                const commands = this._parser.parseLine(commentNode.get().data)
+                const includeCommand = commands.find((command) => {
+                    return command.name() === 'include'
+                })
+                if (includeCommand &amp;&amp; commands.length == 1) {
+                    for (let i = newChildNodes.length - 1; i >= 0; i--) {
+                        parentNode.appendChildAfter(newChildNodes[i], commentNode)
+                    }
+
+                    if (this._removeComments) {
+                        commentNode.removeChild(commentNode)
+                    }
+
+                    return true;
+                }
+            })
+        })
+
+        return siblingNodes
+    }
+
+    /** @private */
+    _import(command, commands, globalContext) {
+        return this._reader.readNodes(command.arguments()).then((nodes) => {
+
+            const context = this._alias(commands, globalContext)
+
+            return this._compile(nodes, context).then((nodes) => {
+                return this._interpolate(nodes, context)
+            })
+        })
+    }
+
+    /** @private */
+    _interpolate(nodes, context) {
+
+        const wrappedNodes = new Nodes(nodes)
+        wrappedNodes.forEach((node) => {
+            const type = node.type
+            const attributes = node.attributes
+
+            if (type === Node.TYPE_TAG || node.name === 'style' || node.name === 'script') {
+                for (let key in attributes) {
+                    const value = attributes[key]
+                    const interpolatedValue = this._interpolator.interpolate(value, context)
+                    if (interpolatedValue === 'false' &amp;&amp; this._attributes_which_values_are_ignored.includes(key)) {
+                        delete attributes[key]
+                    } else {
+                        attributes[key] = interpolatedValue
+                    }
+
+                }
+            } else if (type === Node.TYPE_TEXT) {
+                const rawNode = node.get()
+                const text = rawNode.data
+                rawNode.data = this._interpolator.interpolate(text, context)
+            }
+        }, true)
+
+        /*nodes.forEach((node) => {
+        
+            const textNodes = node.find({
+                type: 'text'
+            })
+        
+            textNodes.forEach((textNode) => {
+        
+            })
+        })*/
+
+        return Promise.resolve(nodes)
+    }
+
+    /** @private */
+    _alias(commands, context) {
+        const aliasCommand = commands.find((command) => command.name() === 'as')
+        const withCommand = commands.find((command) => command.name() === 'with')
+
+        if (!aliasCommand &amp;&amp; !withCommand) {
+            // return the initial context
+            return context
+        } else if (aliasCommand &amp;&amp; !withCommand) {
+            // return a new object with the alias arguments values as key
+            // and the initial context as value
+            const aliasArgument = aliasCommand.arguments()
+            const newContext = {}
+            newContext[aliasArgument] = context
+            return newContext
+        } else if (!aliasCommand &amp;&amp; withCommand) {
+            // no need to return a new object, extract the value of the with arguments
+            // and get the value from the initial contet
+            const withArgument = withCommand.arguments()
+            const withValue = this._interpolator.valueFor(withArgument, context)
+            return withValue
+        } else {
+            // having both commands means we will return a new object with the
+            // alias arguments values as key and the value which we extracted out of our
+            // context with help from the with commands argument
+            const aliasArgument = aliasCommand.arguments()
+            const withArgument = withCommand.arguments()
+            const withValue = this._interpolator.valueFor(withArgument, context)
+
+            const newContext = {}
+            newContext[aliasArgument] = withValue
+            return newContext
+        }
+    }
+}
+
+
+module.exports = TemplateCompiler</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<br class="clear">
+
+<footer>
+    Generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.6</a> using the Minami theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/linenumber.js"></script>
+</body>
+</html>
